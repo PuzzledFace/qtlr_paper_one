@@ -1,0 +1,97 @@
+---
+title: "Focussed and Fassinated"
+author: "John Kirkpatrick"
+date: "3/22/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(knitr)
+library(qtlr)
+source("functions.R", echo=FALSE)
+```
+
+```{r functions, include=FALSE}
+maxPlotRate <- 20
+interimMonth <- "09"
+interimMonthName <- month.abb[as.integer(interimMonth)]
+interimYear <- "2018"
+qtls <- c(0.1, 0.9)
+```
+
+```{r, error=TRUE}
+aeBase <- readData(paste0(interimYear, interimMonth)) %>% 
+            filter(Exposure > 0.2)
+
+aeBase %>% filter(is.na(Region))
+
+mBase <- fitPoissonModel(aeBase$EventCount, aeBase$Exposure)
+fitIndex <-max(unique(mBase$Index), na.rm=TRUE)
+mBasePlot <- mBase %>% filter(Parameter=="mu",
+                              Index==fitIndex,
+                              Value < maxPlotRate)
+
+qtlColours <- c("darkgrey", "white", "darkgrey")
+qtlLabels <-c("Low", "", "High")
+qtlScale <- scale_fill_manual(name="QTL", labels=qtlLabels, values=qtlColours)
+
+createQtlPlot(mBasePlot,
+              groupData=aeBase,
+              groupResponse=Rate,
+              groupSize=Subjects,
+              groupType=Region,
+              qtls=qtls,
+              nDensity=2048) + 
+  labs(title=" ") +
+  qtlScale +
+  scale_linetype_manual(labels=c("East", "ROW"), 
+                        values=c("solid", "dashed"))
+
+limits <- qtlToQuantile(mBase %>% filter(Index==fitIndex), qtls)
+
+limits %>% kable(digits=c(1, 3),
+        table.attr="style='width:30%;'",
+        colnames=c("Quantile", "equivalent event rate"),
+        caption="Derived action limits")
+
+results <-  mBase %>%
+              filter(Parameter == "mu") %>%
+              group_by(Parameter, Index) %>%
+              summarise(Fitted=mean(Value)) %>%
+              ungroup()
+
+aeBase <- aeBase %>% 
+            mutate(Index=1:(fitIndex-1)) %>% 
+            full_join(results, by="Index") %>% 
+            select(-Parameter)
+
+aeBase <- aeBase %>%
+            mutate(Band=cut(Rate,
+                            breaks=c(-Inf, limits$Quantile, Inf),
+                            labels=c("Low", "OK", "High"))) %>% 
+            filter(!is.na(Region))
+
+aeBase %>% 
+  select(Centre, Country, Subjects, Exposure, EventCount, Rate, Fitted, Region, Band) %>% 
+  filter(Band != "OK") %>% 
+  arrange(Rate) %>% 
+  kable(digits=c(NA, NA, 0, 2, 0, 2, 2, NA, NA),
+        table.attr="style='width:30%;'",
+        caption="Centres in the 'Low' or 'High' investigation ranges")
+
+aeBase %>% 
+  group_by(Region) %>% 
+  summarise(N=n()) %>% 
+  kable(caption="Centres by region")
+
+aeBase %>% 
+  group_by(Region, Band) %>% 
+  summarise(N=n()) %>% 
+  ungroup() %>% 
+  spread(key=Band, value=N)
+```
+
+
