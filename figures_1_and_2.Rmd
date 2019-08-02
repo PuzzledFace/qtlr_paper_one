@@ -57,7 +57,7 @@ nestedData <- data %>%
           nest(.key=Observed)
 results <- nestedData %>% 
   mutate(QTL=map(Observed, function(x) fitBinomialModel(n=x$N, r=x$R) %>% filter(Index == 16)),
-         Limits=map(QTL, function(x) qtlToQuantile(x, qtls)))
+         Limits=map(QTL, function(x) qtlFromQuantile(x, qtls)))
                 
 tempFunc <- function(i)
 {
@@ -77,6 +77,7 @@ plots <- lapply(1:9, tempFunc)
 ```
 
 ```{r fig2}
+tiff(filename="Figure2.tiff", width=4000, height=4000, res=800)
 ggdraw() +
   draw_plot(plots[[7]], x=0.000, y=0.000, width=0.333, height=0.333) +
   draw_plot(plots[[8]], x=0.333, y=0.000, width=0.333, height=0.333) +
@@ -87,18 +88,20 @@ ggdraw() +
   draw_plot(plots[[1]], x=0.000, y=0.667, width=0.333, height=0.333) +
   draw_plot(plots[[2]], x=0.333, y=0.667, width=0.333, height=0.333) +
   draw_plot(plots[[3]], x=0.667, y=0.667, width=0.333, height=0.333)
-ggsave("fig2.jpg")
+dev.off()
 ```
 
 ```{r fig1}
+tiff(filename="Figure1.tiff", width=4000, height=4000, res=800)
 print(plots[[1]])
-ggsave("fig1.jpg", plot=plots[[1]])
+dev.off()
+#ggsave("fig1.jpg", plot=plots[[1]])
 ```
 
 ```{r table2}
 results %>% 
   unnest(Limits) %>% 
-  spread(key=Prob, value=Quantile) %>% 
+  spread(key=Quantile, value=QTL) %>% 
   rename("Lower"=`0.1`, "Upper"=`0.9`) %>% 
   kable(digits=2,
         table.attr = "style='width:50%;'",
@@ -106,17 +109,17 @@ results %>%
   add_header_above(c(" "=2, "QTL limits"=2)) %>% 
   collapse_rows(columns = 1, valign = "top")
 
-# results %>%
-#   unnest(Limits) %>%
-#   spread(key=Prob, value=Quantile) %>%
-#   rename("Low"=3, "High"=4) %>%
-#   group_by(Rate, Var) %>%
-#   nest() %>%
-#   spread(key=Var, value=data) %>%
-#   unnest() %>%
-#   kable(digits=2,
-#         col.names=c("Rate", rep(sprintf("%.f%%", 100*qtls), times=3)),
-#         table.attr = "style='width:50%;'") %>%
-#   add_header_above(c(" "=1, "Low"=2, "Medium"=2, "High"=2)) %>%
-#   add_header_above(c(" "=1, "Variation"=6))
+results %>%
+  unnest(Limits) %>%
+  spread(key=Quantile, value=QTL) %>%
+  rename("Low"=3, "High"=4) %>%
+  group_by(Rate, Var) %>%
+  nest() %>%
+  spread(key=Var, value=data) %>%
+  unnest() %>%
+  kable(digits=2,
+        col.names=c("Rate", rep(sprintf("%.f%%", 100*qtls), times=3)),
+        table.attr = "style='width:50%;'") %>%
+  add_header_above(c(" "=1, "Low"=2, "Medium"=2, "High"=2)) %>%
+  add_header_above(c(" "=1, "Variation"=6))
 ```

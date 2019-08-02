@@ -11,14 +11,13 @@ library(tidyverse)
 library(lubridate)
 library(knitr)
 library(qtlr)
-library("runjags")
+library(runjags)
+library(cowplot)
+
 runjags.options(silent.runjags = TRUE, silent.jags = TRUE)
 ```
 
 ```{r functions, include=FALSE}
-interimMonth <- "09"
-interimMonthName <- month.abb[as.integer(interimMonth)]
-interimYear <- "2018"
 qtls <- c(0.1, 0.9)
 
 study1 <- tibble(Exposure=c(10, 10.5, 9.5, 11, 9, 8.5), 
@@ -31,7 +30,7 @@ study2 <- tibble(Exposure=c(10, 10.5, 9.5, 11, 9, 8.5),
 
 ## Study 1
 
-```{r, error=TRUE}
+```{r}
 
 mBase <- fitPoissonModel(study1$Events, study1$Exposure)
 fitIndex <-max(unique(mBase$Index), na.rm=TRUE)
@@ -42,21 +41,19 @@ qtlColours <- c("darkgrey", "white", "darkgrey")
 qtlLabels <-c("Low", "", "High")
 qtlScale <- scale_fill_manual(name="QTL", labels=qtlLabels, values=qtlColours)
 
-createQtlPlot(mBasePlot,
-              groupData=study1,
-              groupResponse=Rate,
-              groupSize=Exposure,
-              qtls=qtls,
-              nDensity=2048,
-              xAxisRange=c(0, 2)) + 
-  labs(title="Study A") +
-  qtlScale +
-  scale_linetype_manual(labels=c("East", "ROW"), 
-                        values=c("solid", "dashed"))
+study1 <- createQtlPlot(mBasePlot,
+                        groupData=study1,
+                        groupResponse=Rate,
+                        groupSize=Exposure,
+                        qtls=qtls,
+                        nDensity=2048,
+                        xAxisRange=c(0, 2)) + 
+            labs(title="Study A") +
+            qtlScale +
+            scale_linetype_manual(labels=c("East", "ROW"), 
+                                  values=c("solid", "dashed"))
 
-study1 %>% kable(digits=c(1, 0, 3))
-
-limits <- qtlToQuantile(mBase %>% filter(Index==fitIndex), qtls)
+limits <- qtlFromQuantile(mBase %>% filter(Index==fitIndex), qtls)
 
 limits %>% kable(digits=c(1, 3),
         table.attr="style='width:30%;'",
@@ -66,7 +63,7 @@ limits %>% kable(digits=c(1, 3),
 
 ## Study 2
 
-```{r, error=TRUE}
+```{r}
 
 mBase <- fitPoissonModel(study2$Events, study2$Exposure)
 fitIndex <-max(unique(mBase$Index), na.rm=TRUE)
@@ -77,23 +74,35 @@ qtlColours <- c("darkgrey", "white", "darkgrey")
 qtlLabels <-c("Low", "", "High")
 qtlScale <- scale_fill_manual(name="QTL", labels=qtlLabels, values=qtlColours)
 
-createQtlPlot(mBasePlot,
-              groupData=study2,
-              groupResponse=Rate,
-              groupSize=Exposure,
-              qtls=qtls,
-              xAxisRange=c(0, 2)) + 
-  labs(title="Study B") +
-  qtlScale +
-  scale_linetype_manual(labels=c("East", "ROW"), 
-                        values=c("solid", "dashed"))
+study2 <- createQtlPlot(mBasePlot,
+                        groupData=study2,
+                        groupResponse=Rate,
+                        groupSize=Exposure,
+                        qtls=qtls,
+                        xAxisRange=c(0, 2)) + 
+            labs(title="Study B") +
+            qtlScale +
+            scale_linetype_manual(labels=c("East", "ROW"), 
+                                  values=c("solid", "dashed"))
 
-limits <- qtlToQuantile(mBase %>% filter(Index==fitIndex), qtls)
-
-study2 %>% kable(digits=c(1, 0, 3))
+limits <- qtlFromQuantile(mBase %>% filter(Index==fitIndex), qtls)
 
 limits %>% kable(digits=c(1, 3),
         table.attr="style='width:30%;'",
         col.names=c("Quantile", "Equivalent event rate"),
         caption="Derived action limits")
+```
+
+## Combined plot
+
+```{r}
+tiff(filename="Figure3.tiff", width=8000, height=4000, res=800)
+ggdraw() +
+  draw_plot(study1, x=0.0, y=0.0, width=0.5, height=1.0) +
+  draw_plot(study2, x=0.5, y=0.0, width=0.5, height=1.0)
+dev.off()
+
+print(study1)
+print(study2)
+
 ```
