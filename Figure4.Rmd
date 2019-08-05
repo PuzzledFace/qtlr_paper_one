@@ -11,7 +11,73 @@ library(tidyverse)
 library(lubridate)
 library(knitr)
 library(qtlr)
-source("functions.R", echo=FALSE)
+#source("functions.R", echo=FALSE)
+
+createQtlPlot <- function(mcmcData,
+                          mcmcVar=Value,
+                          groupData,
+                          groupResponse=ObservedResponse,
+                          groupSize=N,
+                          groupType=NULL,
+                          basicTheme=ggplot2::theme_light,
+                          qtls=c(0.1, 0.2, 0.8, 0.9),
+                          postScaleFactor=NULL,
+                          mcmcAlpha=0.2,
+                          nDensity=512)
+{
+  #Validate
+  if (is.null(groupData)) stop("groupData cannot be null")
+  if (is.null(quote(groupResponse))) stop("groupResponse cannot be null")
+  if (!tibble::is_tibble(groupData)) stop("groupData must be a tibble")
+  if (is.null(mcmcData)) stop("mcmcData cannot be null")
+  if (!tibble::is_tibble(mcmcData)) stop("mcmcData must either be null or a tibble.")
+  if (is.null(quote(mcmcVar))) stop("mcmcVar cannot be null")
+  #Begin
+  qResp <- dplyr::enquo(groupResponse)
+  qSize <- dplyr::enquo(groupSize)
+  if (!is.null(quote(groupType))) qGroup <- dplyr::enquo(groupType)
+  qVar <- dplyr::enquo(mcmcVar)
+  plot <- groupData %>% ggplot2::ggplot()
+  #Plot the observed data
+  if (is.null(qGroup)) {
+    plot <- plot + ggplot2::geom_linerange(ggplot2::aes_q(x=qResp, ymin=0, ymax=qSize))
+  } else {
+    plot <- plot + ggplot2::geom_linerange(ggplot2::aes_q(x=qResp, ymin=0, ymax=qSize, linetype=qGroup))
+  }
+  #Plot the posterior density.  Could use geom_density directly, but shading
+  #the action limits requires manipulation...
+  if (!is.null(qtls) & length(qtls) > 0)
+  {
+    #Shading required
+    if (is.null(postScaleFactor)) postScaleFactor <- 2 * (groupData %>%  dplyr::summarise(Max=max(!! qSize)))$Max[1]
+    qtlTibble <- qtlFromQuantile(mcmcData, qtls)
+    d <- ggplot2::ggplot_build(mcmcData %>% 
+                                 ggplot2::ggplot() +
+                                 ggplot2::geom_density(ggplot2::aes_q(qVar, y=~..scaled..*postScaleFactor), 
+                                                       n=nDensity)
+    )$data[[1]]
+    d <- d %>% dplyr::mutate(Area=cut(x, 
+                                      breaks=c(-Inf, qtlTibble$QTL, Inf),
+                                      labels=1:(nrow(qtlTibble)+1)))
+    plot <- plot +
+      ggplot2::geom_line(data=d, ggplot2::aes(x=x, y=y))
+    for (a in unique(d$Area))
+      plot <- plot + ggplot2::geom_area(data=d %>% dplyr::filter(Area == a),
+                                        ggplot2::aes(x=x, y=y, fill=Area),
+                                        alpha=mcmcAlpha)
+  } else {
+    #No shading required
+    plot <- plot + ggplot2::geom_density(data=mcmcData,
+                                         ggplot2::aes_q(qVar, y=~..scaled..*30), 
+                                         n=nDensity)
+  }
+  plot <- plot + 
+    basicTheme() +
+    ggplot2::theme(axis.ticks.y=ggplot2::element_blank(),
+                   axis.text.y=ggplot2::element_blank(),
+                   axis.title.y=ggplot2::element_blank())
+  return(plot)
+}
 ```
 
 ```{r functions, include=FALSE}
@@ -43,18 +109,19 @@ qtlLabels <-c("Low", "", "High")
 qtlScale <- scale_fill_manual(name="QTL", labels=qtlLabels, values=qtlColours)
 
 tiff(filename="Figure4.tiff", width=6000, height=4000, res=800)
-createQtlPlot(mBasePlot,
-              groupData=aeBase,
-              groupResponse=Rate,
-              groupSize=Subjects,
-              groupType=Region,
-              qtls=qtls,
-              nDensity=2048) + 
+plot <- createQtlPlot(mBasePlot,
+                      groupData=aeBase,
+                      groupResponse=Rate,
+                      groupSize=Subjects,
+                      groupType=Region,
+                      qtls=qtls,
+                      nDensity=2048) + 
   labs(title=" ") +
   qtlScale +
   scale_linetype_manual(labels=c("East", "ROW"), 
                         values=c("solid", "dashed"))
 dev.off()
+print(plot)
 
 limits <- qtlFromQuantile(mBase %>% filter(Index==fitIndex), qtls)
 
@@ -84,7 +151,7 @@ aeBase %>%
   select(Centre, Country, Subjects, Exposure, EventCount, Rate, Fitted, Region, Band) %>% 
   filter(Band != "OK") %>% 
   arrange(Rate) %>% 
-  kable(digits=c(NA, NA, 0, 2, 0, 2, 2, NA, NA),
+  kable(digits=c(0, NA, 0, 2, 0, 2, 2, NA, NA),
         table.attr="style='width:30%;'",
         caption="Centres in the 'Low' or 'High' investigation ranges")
 

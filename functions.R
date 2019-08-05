@@ -6,19 +6,13 @@ readData <- function(folder)
   dm <- dm %>% 
     mutate(COUNTRY=ifelse(str_length(COUNTRY) == 0, "UNK", COUNTRY))
   rv <- createSummaryData(ae, dm)
-  rv <- rv %>% 
-    add_column(Timepoint=paste0(substr(folder, 1, 4), "-", substr(folder, 5, 6)))
+  # rv <- rv %>% 
+  #   add_column(Timepoint=paste0(substr(folder, 1, 4), "-", substr(folder, 5, 6)))
   return (rv)
 }
 
 mapCountryToRegion <- function(data)
 {
-  # mapping <- list("ARG"="ROW",  "BEL"="West", "BUL"="East", "CAN"="ROW",
-  #                 "DEN"="West", "ESP"="West", "GBR"="West", "GER"="West",
-  #                 "GRE"="West", "HUN"="East", "ITA"="West", "JPN"="ROW",
-  #                 "LTU"="East", "MEX"="ROW", "NED"="West", "POL"="East",
-  #                 "POR"="West", "ROM"="East", "SUI"="West", "USA"="ROW",
-  #                 "UNK"="Unknown")
   mapping <- list("ARG"="ROW",  "BEL"="ROW", "BUL"="East", "CAN"="ROW",
                   "DEN"="ROW", "ESP"="ROW", "GBR"="ROW", "GER"="ROW",
                   "GRE"="ROW", "HUN"="East", "ITA"="ROW", "JPN"="ROW",
@@ -54,10 +48,6 @@ createSummaryData <- function(aeData, dmData)
     select(Study, Centre, Subject, Exposure, COUNTRY, RFENDT) %>% 
     rename(Country=COUNTRY)
   
-  dm %>% 
-    filter(Centre %in% c("283078","284108","288544")) %>% 
-    kable(caption="Centres with dubious country attribution")
-  
   #Filter to AEs with an onset no more than 30 days after the last dose of study
   #drug.
   ae <- ae %>% 
@@ -84,6 +74,7 @@ createSummaryData <- function(aeData, dmData)
     ungroup() %>% 
     filter(Exposure > 0)
   aeSummary <- mapCountryToRegion(aeSummary)
+  aeSummary <- aeSummary %>% mutate(Centre=1:nrow(aeSummary)) #Anonymise centres
   return (aeSummary)
 }
 
@@ -103,70 +94,4 @@ createIncrementalData <- function(base, end)
     mutate(Baseline=base,
            Endpoint=end)
   return(ae)
-}
-
-createQtlPlot <- function(mcmcData,
-                          mcmcVar=Value,
-                          groupData,
-                          groupResponse=ObservedResponse,
-                          groupSize=N,
-                          groupType=NULL,
-                          basicTheme=ggplot2::theme_light,
-                          qtls=c(0.1, 0.2, 0.8, 0.9),
-                          postScaleFactor=NULL,
-                          mcmcAlpha=0.2,
-                          nDensity=512)
-{
-  #Validate
-  if (is.null(groupData)) stop("groupData cannot be null")
-  if (is.null(quote(groupResponse))) stop("groupResponse cannot be null")
-  if (!tibble::is_tibble(groupData)) stop("groupData must be a tibble")
-  if (is.null(mcmcData)) stop("mcmcData cannot be null")
-  if (!tibble::is_tibble(mcmcData)) stop("mcmcData must either be null or a tibble.")
-  if (is.null(quote(mcmcVar))) stop("mcmcVar cannot be null")
-  #Begin
-  qResp <- dplyr::enquo(groupResponse)
-  qSize <- dplyr::enquo(groupSize)
-  if (!is.null(quote(groupType))) qGroup <- dplyr::enquo(groupType)
-  qVar <- dplyr::enquo(mcmcVar)
-  plot <- groupData %>% ggplot2::ggplot()
-  #Plot the observed data
-  if (is.null(qGroup)) {
-    plot <- plot + ggplot2::geom_linerange(ggplot2::aes_q(x=qResp, ymin=0, ymax=qSize))
-  } else {
-    plot <- plot + ggplot2::geom_linerange(ggplot2::aes_q(x=qResp, ymin=0, ymax=qSize, linetype=qGroup))
-  }
-  #Plot the posterior density.  Could use geom_density directly, but shading
-  #the action limits requires manipulation...
-  if (!is.null(qtls) & length(qtls) > 0)
-  {
-    #Shading required
-    if (is.null(postScaleFactor)) postScaleFactor <- 2 * (groupData %>%  dplyr::summarise(Max=max(!! qSize)))$Max[1]
-    qtlTibble <- qtlFromQuantile(mcmcData, qtls)
-    d <- ggplot2::ggplot_build(mcmcData %>% 
-                                 ggplot2::ggplot() +
-                                 ggplot2::geom_density(ggplot2::aes_q(qVar, y=~..scaled..*postScaleFactor), 
-                                                       n=nDensity)
-    )$data[[1]]
-    d <- d %>% dplyr::mutate(Area=cut(x, 
-                                      breaks=c(-Inf, qtlTibble$QTL, Inf),
-                                      labels=1:(nrow(qtlTibble)+1)))
-    plot <- plot +
-      ggplot2::geom_line(data=d, ggplot2::aes(x=x, y=y))
-    for (a in unique(d$Area))
-      plot <- plot + ggplot2::geom_area(data=d %>% dplyr::filter(Area == a),
-                                        ggplot2::aes(x=x, y=y, fill=Area),
-                                        alpha=mcmcAlpha)
-  } else {
-    #No shading required
-    plot <- plot + ggplot2::geom_density(data=mcmcData,
-                                         ggplot2::aes_q(qVar, y=~..scaled..*30), 
-                                         n=nDensity)
-  }
-  plot <- plot + 
-    basicTheme() +
-    ggplot2::theme(axis.ticks.y=ggplot2::element_blank(),
-                   axis.text.y=ggplot2::element_blank(),
-                   axis.title.y=ggplot2::element_blank())
-  return(plot)
 }
