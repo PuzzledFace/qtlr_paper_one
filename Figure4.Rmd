@@ -51,12 +51,12 @@ createQtlPlot <- function(mcmcData,
     #Shading required
     if (is.null(postScaleFactor)) postScaleFactor <- 2 * (groupData %>%  dplyr::summarise(Max=max(!! qSize)))$Max[1]
     qtlTibble <- qtlFromQuantile(mcmcData, qtls)
-    d <- ggplot2::ggplot_build(mcmcData %>% 
+    d <- ggplot2::ggplot_build(mcmcData %>%
                                  ggplot2::ggplot() +
-                                 ggplot2::geom_density(ggplot2::aes_q(qVar, y=~..scaled..*postScaleFactor), 
+                                 ggplot2::geom_density(ggplot2::aes_q(qVar, y=~..scaled..*postScaleFactor),
                                                        n=nDensity)
     )$data[[1]]
-    d <- d %>% dplyr::mutate(Area=cut(x, 
+    d <- d %>% dplyr::mutate(Area=cut(x,
                                       breaks=c(-Inf, qtlTibble$QTL, Inf),
                                       labels=1:(nrow(qtlTibble)+1)))
     plot <- plot +
@@ -64,14 +64,15 @@ createQtlPlot <- function(mcmcData,
     for (a in unique(d$Area))
       plot <- plot + ggplot2::geom_area(data=d %>% dplyr::filter(Area == a),
                                         ggplot2::aes(x=x, y=y, fill=Area),
-                                        alpha=mcmcAlpha)
+                                        alpha=mcmcAlpha,
+                                        show.legend=FALSE)
   } else {
     #No shading required
     plot <- plot + ggplot2::geom_density(data=mcmcData,
-                                         ggplot2::aes_q(qVar, y=~..scaled..*30), 
+                                         ggplot2::aes_q(qVar, y=~..scaled..*30),
                                          n=nDensity)
   }
-  plot <- plot + 
+  plot <- plot +
     basicTheme() +
     ggplot2::theme(axis.ticks.y=ggplot2::element_blank(),
                    axis.text.y=ggplot2::element_blank(),
@@ -99,7 +100,7 @@ aeBase <- readRDS("Figure4.RData") %>%
 
 ```{r}
 mBase <- fitPoissonModel(aeBase$EventCount, aeBase$Exposure)
-fitIndex <-max(unique(mBase$Index), na.rm=TRUE)
+fitIndex <- max(unique(mBase$Index), na.rm=TRUE)
 mBasePlot <- mBase %>% filter(Parameter=="mu",
                               Index==fitIndex,
                               Value < maxPlotRate)
@@ -108,20 +109,30 @@ qtlColours <- c("darkgrey", "white", "darkgrey")
 qtlLabels <-c("Low", "", "High")
 qtlScale <- scale_fill_manual(name="QTL", labels=qtlLabels, values=qtlColours)
 
-tiff(filename="Figure4.tiff", width=6000, height=4000, res=800)
-plot <- createQtlPlot(mBasePlot,
-                      groupData=aeBase,
-                      groupResponse=Rate,
-                      groupSize=Subjects,
-                      groupType=Region,
-                      qtls=qtls,
-                      nDensity=2048) + 
+tiff(filename="Figure4.tiff", width=4500, height=3000, res=800)
+createQtlPlot(mBasePlot,
+              groupData=aeBase,
+              groupResponse=Rate,
+              groupSize=Subjects,
+              groupType=Region,
+              qtls=qtls,
+              nDensity=2048) + 
   labs(title=" ") +
   qtlScale +
-  scale_linetype_manual(labels=c("East", "ROW"), 
-                        values=c("solid", "dashed"))
+  scale_linetype_manual(values=c("dashed", "solid"))
 dev.off()
-print(plot)
+
+createQtlPlot(mBasePlot,
+              groupData=aeBase,
+              groupResponse=Rate,
+              groupSize=Subjects,
+              groupType=Region,
+              qtls=qtls,
+              nDensity=2048) + 
+  labs(title=" ") +
+  qtlScale +
+  scale_linetype_manual(values=c("dashed", "solid"))
+
 
 limits <- qtlFromQuantile(mBase %>% filter(Index==fitIndex), qtls)
 
