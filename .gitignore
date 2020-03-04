@@ -4,6 +4,8 @@
 # History files
 .Rhistory
 .Rapp.history
+functions.R
+cover letter.*
 
 # Session Data files
 .RData

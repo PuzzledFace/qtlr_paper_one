@@ -1,0 +1,134 @@
+---
+title: "Simulation"
+author: "John Kirkpatrick"
+date: "10/1/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+library(qtlr)
+library(cowplot)
+library(ggrepel)
+
+#Initialise
+#set.seed(280750)
+set.seed(252729)
+nCentres <- 15
+centreSize <- 10
+standardRate <- 0.25
+badRate <- 0.1
+
+qtlColours <- c("darkgrey", "white", "darkgrey")
+qtlLabels <-c("Low", "", "High")
+qtlScale <- scale_fill_manual(name="QTL", labels=qtlLabels, values=qtlColours)
+
+
+#k: number of centres
+#n: number of patients per centre
+#r1: standard response rate
+#r2: 'bad' response rate
+generateData <- function(k, n, r1, r2) {
+  d <- tibble(Centre=1:k,
+              N=centreSize + round(runif(k, -5, 5)),
+              R=c(rbinom(k-1, N, r1), rbinom(1, N, r2)),
+              TrueRate=c(rep(r1, k-1), r2),
+              ObservedRate=R/N)
+  return(d)
+}
+
+```
+
+## Before intervention
+
+```{r}
+part1 <- generateData(nCentres, centreSize, standardRate, badRate)
+part1 %>% kable()
+
+model1 <- fitBinomialModel(n=part1$N, r=part1$R) %>% filter(Index == 11)
+plot1 <- createQtlPlot(model1, 
+                       groupData=part1, 
+                       groupResponse=ObservedRate,
+                       qtls=c(0.1)) +
+           theme(axis.title.y=element_text(angle=90)) + #Override createQtlPlot default
+           geom_label_repel(data=part1,
+                            aes(x=ObservedRate, y=N, label=LETTERS[1:nCentres]),
+                            size=3) +
+           coord_cartesian(xlim=c(0, 0.6)) +
+           labs(x="Observed rate",
+                y="Density",
+                caption="Before intervention"
+           ) +
+           ylab("Density") +
+           qtlScale
+
+print(plot1)
+```
+
+## After intervention
+
+```{r}
+part2 <- generateData(nCentres, centreSize, standardRate, standardRate)
+
+wholeStudy <- bind_rows(part1, part2) %>% 
+                group_by(Centre) %>% 
+                summarise(N=sum(N),
+                          R=sum(R),
+                          ObservedRate=R/N)
+
+wholeStudy %>% kable()
+
+model2 <- fitBinomialModel(n=part1$N, r=part1$R) %>% filter(Index == 11)
+plot2 <- createQtlPlot(model2, 
+                       groupData=wholeStudy, 
+                       groupResponse=ObservedRate,
+                       qtls=c(0.1)) +
+           theme(axis.title.y=element_text(angle=90)) + #Override createQtlPlot default
+           geom_label_repel(data=wholeStudy, 
+                            aes(x=ObservedRate, y=N, label=LETTERS[1:nCentres]), 
+                            size=3) +
+           coord_cartesian(xlim=c(0, 0.6)) +
+           labs(y="Density",
+                x="Observed rate",
+                caption="After intervention") +
+           qtlScale
+
+print(plot2)
+```
+
+## Combined
+```{r}
+title <- ggdraw() +
+           draw_label("Figure 4: QTLs for a fictitious study, before and after intervention", x=0.0, hjust=0)
+plot3 <- ggdraw() +
+           draw_plot(plot1, x=0.0, y=0.0, width=0.5, height=1) +
+           draw_plot(plot2, x=0.5, y=0.0, width=0.5, height=1)
+combinedPlot <- plot_grid(
+                  title, plot3,
+                  ncol = 1,
+                  rel_heights = c(0.1, 1)
+                )
+print(combinedPlot)
+
+#Save to file
+tiff(filename="Figure4.tiff", width=7200, height=2400, res=800)
+print(combinedPlot)
+dev.off()
+```
+
+## Raw data
+```{r}
+part1 %>% 
+  rename(N1=N,
+         R1=R) %>% 
+  select(-ObservedRate, -TrueRate) %>% 
+  left_join(part2 %>%
+              rename(N2=N, 
+                     R2=R) %>% 
+              select(-ObservedRate, -TrueRate)
+           , by="Centre") %>% 
+  kable()
+
+```

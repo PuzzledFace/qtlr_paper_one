@@ -1,0 +1,128 @@
+---
+title: "Fictitious data"
+author: "John Kirkpatrick"
+date: "3/22/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(knitr)
+library(qtlr)
+library(runjags)
+library(cowplot)
+
+runjags.options(silent.runjags = TRUE, silent.jags = TRUE)
+```
+
+```{r functions, include=FALSE}
+qtls <- c(0.1, 0.9)
+
+data1 <- tibble(Exposure=c(10, 10.5, 9.5, 11, 9, 8.5), 
+                 Events=c(2, 2, 2, 2, 2, 2),
+                 Rate=Events/Exposure)
+data2 <- tibble(Exposure=c(10, 10.5, 9.5, 11, 9, 8.5), 
+                 Events=c(1, 1, 1, 1, 1, 7),
+                 Rate=Events/Exposure)
+```
+
+## Study 1
+
+```{r}
+
+mBase <- fitPoissonModel(data1$Events, data1$Exposure)
+fitIndex <-max(unique(mBase$Index), na.rm=TRUE)
+mBasePlot <- mBase %>% filter(Parameter=="mu",
+                              Index==fitIndex)
+
+qtlColours <- c("darkgrey", "white", "darkgrey")
+qtlLabels <-c("Low", "", "High")
+qtlScale <- scale_fill_manual(name="QTL", labels=qtlLabels, values=qtlColours)
+
+study1 <- createQtlPlot(mBasePlot,
+                        groupData=data1,
+                        groupResponse=Rate,
+                        groupSize=Exposure,
+                        qtls=qtls,
+                        nDensity=2048,
+                        xAxisRange=c(0, 2)) + 
+            theme(axis.title.y=element_text(angle=90)) + #Override createQtlPlot default
+            labs(title="Study A",
+                 y="Density") +
+            qtlScale
+
+limits <- qtlFromQuantile(mBase %>% filter(Index==fitIndex), qtls)
+
+limits %>% kable(digits=c(1, 3),
+        table.attr="style='width:30%;'",
+        col.names=c("Quantile", "Equivalent event rate"),
+        caption="Derived action limits")
+```
+
+## Study 2
+
+```{r}
+
+mBase <- fitPoissonModel(data2$Events, data2$Exposure)
+fitIndex <-max(unique(mBase$Index), na.rm=TRUE)
+mBasePlot <- mBase %>% filter(Parameter=="mu",
+                              Index==fitIndex)
+
+qtlColours <- c("darkgrey", "white", "darkgrey")
+qtlLabels <-c("Low", "", "High")
+qtlScale <- scale_fill_manual(name="QTL", labels=qtlLabels, values=qtlColours)
+
+study2 <- createQtlPlot(mBasePlot,
+                        groupData=data2,
+                        groupResponse=Rate,
+                        groupSize=Exposure,
+                        qtls=qtls,
+                        xAxisRange=c(0, 2)) + 
+            theme(axis.title.y=element_text(angle=90)) + #Override createQtlPlot default
+            labs(title="Study B",
+                 y="Density") +
+            qtlScale
+
+limits <- qtlFromQuantile(mBase %>% filter(Index==fitIndex), qtls)
+
+limits %>% kable(digits=c(1, 3),
+        table.attr="style='width:30%;'",
+        col.names=c("Quantile", "Equivalent event rate"),
+        caption="Derived action limits")
+```
+
+## Raw data
+
+```{r}
+data1 %>% kable(caption="Study 1")
+data2 %>% kable(caption="Study 2")
+```
+
+## Combined plot
+
+```{r}
+title <- ggdraw() +
+           draw_label("Figure 1: QTLs for two fictitious studies", x=0.0, hjust=0)
+fNote <- ggdraw() +
+           draw_label(
+             size=8,
+             hjust=0,
+             x=0.0,
+             "The x co-ordinates of vertical bars give the observed centre-specific event rates; their heights are proportional to centre sizes")
+plotRow <- plot_grid(study1, study2)
+
+combinedPlot <- plot_grid(
+                  title, plotRow, fNote,
+                  ncol = 1,
+                  rel_heights = c(0.1, 1, 0.025)
+                )
+
+print(combinedPlot)
+
+#Save to file
+tiff(filename="Figure1.tiff", width=8000, height=4000, res=800)
+print(combinedPlot)
+dev.off()
+```
