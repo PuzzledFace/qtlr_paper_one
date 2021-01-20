@@ -1,7 +1,7 @@
 ---
 title: "Figure 3"
 author: "John Kirkpatrick"
-date: "3/22/2019"
+date: "Last run on `r Sys.Date()` by `r Sys.info()[['user']]` on `r Sys.info()['nodename']`"
 output: html_document
 ---
 
@@ -94,9 +94,9 @@ qtls <- c(0.1, 0.9)
 ```{r}
 # aeBase <- readData(paste0(interimYear, interimMonth)) %>%
 #             filter(Exposure > 0.2)
-# saveRDS(aeBase, "Figure3.RData")
+# saveRDS(aeBase, "Figure2.RData")
 
-aeBase <- readRDS("Figure3.RData") %>%
+aeBase <- readRDS("Figure2.RData") %>%
             filter(Exposure > 0.2)
 ```
 
@@ -122,7 +122,7 @@ plot <- createQtlPlot(
         ) + 
         theme(axis.title.y=element_text(angle=90)) + #Override createQtlPlot default
         labs(
-          title="Figure 3: QTL plot for AE rates in study WA29767",
+          title="Figure 2: QTL plot for AE rates in study WA29767",
           y="Density"
         ) +
         qtlScale +
@@ -131,10 +131,10 @@ plot <- createQtlPlot(
 print(plot)
 
 #Save to file
-tiff(filename="Figure3.tiff", width=4500, height=3000, res=800)
+tiff(filename="Figure2.tiff", width=4500, height=3000, res=800)
 print(plot)
 dev.off()
-png(filename="Figure3.png", width=1440, height=960, res=240)
+png(filename="Figure2.png", width=1440, height=960, res=240)
 print(plot)
 dev.off()
 
@@ -177,8 +177,7 @@ aeBase %>%
 
 aeBase %>% 
   group_by(Region, Band) %>% 
-  summarise(N=n()) %>% 
-  ungroup() %>% 
+  summarise(N=n(), .groups="drop") %>% 
   spread(key=Band, value=N)
 ```
 

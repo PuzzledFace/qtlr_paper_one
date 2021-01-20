@@ -1,0 +1,232 @@
+---
+title: "Fictitious data"
+author: "John Kirkpatrick"
+date: "Last run on `r Sys.Date()` by `r Sys.info()[['user']]` on `r Sys.info()['nodename']`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(knitr)
+library(kableExtra)
+library(qtlr)
+library(runjags)
+library(cowplot)
+
+runjags.options(silent.runjags = TRUE, silent.jags = TRUE)
+```
+
+```{r functions, include=FALSE}
+qtls <- c(0.1, 0.9)
+mult <- 2
+data1 <- tibble(
+           NPats=mult*10,
+           Exposure=c(10, 10.5, 9.5, 11, 9, 8.5),
+           Events=mult*c(2, 2, 2, 2, 2, 2),
+           Rate=Events/Exposure
+         )
+data2 <- tibble(
+           NPats=mult*10,
+           Exposure=c(10, 10.5, 9.5, 11, 9, 8.5),
+           Events=mult*c(1, 1, 1, 1, 1, 7),
+           Rate=Events/Exposure
+         )
+# data1 <- tibble(
+#            NPats=c(50, 51, 49, 51, 49, 50),
+#            Exposure=c(10, 10.5, 9.5, 11, 9, 8.5), 
+#            Events=c(10, 9, 11, 11, 9, 10),
+#            Rate=Events/NPats
+#          )
+# data2 <- tibble(
+#            NPats=c(50, 51, 49, 51, 49, 50),
+#            Exposure=c(10, 10.5, 9.5, 11, 9, 8.5), 
+#            Events=c(5, 4, 6, 6, 4, 35),
+#            Rate=Events/NPats
+#          )
+```
+
+## Static QTLs
+```{r}
+a <- 1
+b <- 1
+s <- sum(data1$Events)
+f <- sum(data1$NPats) - s
+
+mean <- (s + 1)/ (s + f + 2)
+prob1 <- pbeta(0.3, s+1, f+1) - pbeta(0.1, s+1, f+1)
+prob2 <- pbeta(0.3, s+1, f+1)
+
+print(mean)
+print(prob1)
+print(prob2)
+
+tibble(
+  x=seq(0.0, 1.0, 0.01),
+  y=dbeta(x, s+1, f+1)
+) %>% 
+  ggplot() +
+    geom_line(aes(x=x, y=y)) +
+    theme_light()
+```
+
+## Dynamic QTLs
+### Study A
+
+```{r, error=TRUE}
+mBase <- fitBinomialModel(data1$NPats, data1$Events)
+fitIndex <-max(unique(mBase$Index), na.rm=TRUE)
+mBasePlot <- mBase %>% filter(Parameter=="p", Index==fitIndex)
+
+qtlColours <- c("darkgrey", "white", "darkgrey")
+qtlLabels <-c("Low", "", "High")
+qtlScale <- scale_fill_manual(name="QTL", labels=qtlLabels, values=qtlColours)
+
+study1 <- createQtlPlot(
+            mBasePlot,
+            groupData=data1,
+            groupResponse=Rate,
+            groupSize=NPats,
+            qtls=qtls,
+            nDensity=2048,
+            xAxisRange=c(0, 1)
+          ) + 
+          theme(axis.title.y=element_text(angle=90)) + #Override createQtlPlot default
+          labs(
+            title="Study A",
+            y="Density") +
+          qtlScale
+
+limits <- qtlFromQuantile(mBase %>% filter(Index==fitIndex), qtls)
+
+limits %>% 
+  kable(
+    digits=c(1, 3),
+    table.attr="style='width:30%;'",
+    col.names=c("Quantile", "Equivalent event rate"),
+    caption="Derived action limits"
+  ) %>% 
+  kable_styling(
+    full_width=FALSE,
+    bootstrap_options=c("striped", "condensed")
+  )
+
+mBasePlot %>% 
+  filter(Index==fitIndex) %>% 
+  mutate(
+    QTL2=ifelse(Value >= 0.1 & Value <= 0.3, 1, 0),
+    QTL3=ifelse(Value <= 0.3, 1, 0)
+  ) %>% 
+  summarise(
+    QTL1=mean(Value),
+    QTL2=mean(QTL2),
+    QTL3=mean(QTL3)
+  ) %>% 
+  kable(digits=3) %>% 
+    kable_styling(
+    full_width=FALSE,
+    bootstrap_options=c("striped", "condensed")
+  )
+```
+
+### Study B
+
+```{r, error=TRUE}
+mBase <- fitBinomialModel(data2$NPats, data2$Events)
+fitIndex <-max(unique(mBase$Index), na.rm=TRUE)
+mBasePlot <- mBase %>% filter(Parameter=="p", Index==fitIndex)
+
+qtlColours <- c("darkgrey", "white", "darkgrey")
+qtlLabels <-c("Low", "", "High")
+qtlScale <- scale_fill_manual(name="QTL", labels=qtlLabels, values=qtlColours)
+
+study2 <- createQtlPlot(
+            mBasePlot,
+            groupData=data2,
+            groupResponse=Rate,
+            groupSize=NPats,
+            qtls=qtls,
+            xAxisRange=c(0, 1)
+          ) + 
+          theme(axis.title.y=element_text(angle=90)) + #Override createQtlPlot default
+          labs(
+            title="Study B",
+            y="Density"
+          ) +
+          qtlScale
+
+limits <- qtlFromQuantile(mBase %>% filter(Index==fitIndex), qtls)
+
+limits %>% kable(
+             digits=c(1, 3),
+             table.attr="style='width:30%;'",
+             col.names=c("Quantile", "Equivalent event rate"),
+             caption="Derived action limits"
+           ) %>% 
+           kable_styling(
+             full_width=FALSE,
+             bootstrap_options=c("striped", "condensed")
+           )
+
+mBasePlot %>% 
+  filter(Index==fitIndex) %>% 
+  mutate(
+    QTL2=ifelse(Value >= 0.1 & Value <= 0.3, 1, 0),
+    QTL3=ifelse(Value <= 0.3, 1, 0)
+  ) %>% 
+  summarise(
+    QTL1=mean(Value),
+    QTL2=mean(QTL2),
+    QTL3=mean(QTL3)
+  ) %>% 
+  kable(digits=3) %>% 
+  kable_styling(
+    full_width=FALSE,
+    bootstrap_options=c("striped", "condensed")
+  )
+```
+
+## Raw data
+
+```{r, error=TRUE}
+data1 %>% 
+  kable(caption="Study A") %>% 
+  kable_styling(
+    full_width=FALSE,
+    bootstrap_options=c("striped", "condensed")
+  )
+data2 %>%
+  kable(caption="Study B")%>% 
+  kable_styling(
+    full_width=FALSE,
+    bootstrap_options=c("striped", "condensed")
+  )
+```
+
+## Combined plot
+
+```{r, error=TRUE}
+title <- ggdraw() +
+           draw_label("Figure 1: QTLs for two fictitious studies", x=0.0, hjust=0)
+fNote <- ggdraw() +
+           draw_label(
+             size=8,
+             hjust=0,
+             x=0.0,
+             "The x co-ordinates of vertical bars give the observed centre-specific event rates; their heights are proportional to centre sizes")
+plotRow <- plot_grid(study1, study2)
+
+combinedPlot <- plot_grid(
+                  title, plotRow, fNote,
+                  ncol = 1,
+                  rel_heights = c(0.1, 1, 0.025)
+                )
+
+print(combinedPlot)
+
+#Save to file
+tiff(filename="Figure1.tiff", width=8000, height=4000, res=800)
+print(combinedPlot)
+dev.off()
+```

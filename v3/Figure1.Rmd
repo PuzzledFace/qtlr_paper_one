@@ -1,7 +1,7 @@
 ---
 title: "Figures 1 and 2"
 author: "John Kirkpatrick"
-date: "2/26/2019"
+date: "Last run on `r Sys.Date()` by `r Sys.info()[['user']]` on `r Sys.info()['nodename']`"
 output: html_document
 ---
 
@@ -14,6 +14,7 @@ library(qtlr)
 library(cowplot)
 library(knitr)
 library(kableExtra)
+library(png)
 ```
 
 ```{r init}
@@ -53,35 +54,44 @@ data <- bind_rows(data) %>%
 
 ```{r analyse}
 nestedData <- data %>%  
-          group_by(Rate, Var) %>%
-          nest(.key=Observed)
+                group_by(Rate, Var) %>%
+                nest(Observed=c(Centre, N, Prob, R, ObservedRate))
 results <- nestedData %>% 
-  mutate(QTL=map(Observed, function(x) fitBinomialModel(n=x$N, r=x$R) %>% filter(Index == 16)),
-         Limits=map(QTL, function(x) qtlFromQuantile(x, qtls)))
-                
+             mutate(
+               QTL=map(Observed, function(x) fitBinomialModel(n=x$N, r=x$R) %>% filter(Index == 16)),
+               Limits=map(QTL, function(x) qtlFromQuantile(x, qtls))
+             )
+```
+
+```{r fig1}
 tempFunc <- function(i)
 {
+  print(i)
   createQtlPlot(mcmcData=results$QTL[[i]] %>% filter(Index == 16), 
                 groupData=results$Observed[[i]], 
                 mcmcAlpha=0.5,
                 groupResponse=ObservedRate, qtls=qtls) +
-    theme(axis.title.y=element_text(angle=90)) + #Override createQtlPlot default
+    theme(
+      axis.title.y=element_text(angle=90, size=8),
+      axis.title.x=element_text(size=8),
+    ) + #Override createQtlPlot default
     coord_cartesian(xlim = c(0, 1)) +
     scale_fill_manual(values=c("grey", "white", "grey")) + 
-    labs(x="Rate", y="Density") +
+    labs(
+      x="Rate", 
+      y="Density"
+    ) +
     guides(fill=FALSE)
 }
 
 plots <- lapply(1:9, tempFunc)
-```
 
-```{r fig2}
 title <- ggdraw() +
-           draw_label("Figure 2: Changes in QTLs as the location and variance of observed data change", x=0.0, hjust=0,
-                      size=12)
+           draw_label("Figure 1: Changes in the posterior with the location and variance of observed data", x=0.0, hjust=0,
+                      size=10)
 fNote <- ggdraw() +
            draw_label(
-             size=8,
+             size=6,
              hjust=0,
              x=0.0,
              "The x co-ordinates of vertical bars give the observed centre-specific event rates; their heights are proportional to centre sizes")
@@ -105,13 +115,18 @@ combinedPlot <- plot_grid(
 print(combinedPlot)
 
 #Save to file
-tiff(filename="Figure2.tiff", width=4000, height=4000, res=800)
+tiff(filename="Figure1.tiff", width=4000, height=4000, res=800)
+print(combinedPlot)
+dev.off()
+
+png(filename="Figure1.png", width=1200, height=1200, res=240)
 print(combinedPlot)
 dev.off()
 ```
 
 ```{r table2}
-results %>% 
+results %>%   
+  select(Rate, Var, Limits) %>% 
   unnest(Limits) %>% 
   spread(key=Quantile, value=QTL) %>% 
   rename("Lower"=`0.1`, "Upper"=`0.9`) %>% 
@@ -121,7 +136,8 @@ results %>%
   add_header_above(c(" "=2, "QTL limits"=2)) %>% 
   collapse_rows(columns = 1, valign = "top")
 
-results %>%
+results %>%  
+  select(Rate, Var, Limits) %>% 
   unnest(Limits) %>%
   spread(key=Quantile, value=QTL) %>%
   rename("Low"=3, "High"=4) %>%
@@ -134,4 +150,8 @@ results %>%
         table.attr = "style='width:50%;'") %>%
   add_header_above(c(" "=1, "Low"=2, "Medium"=2, "High"=2)) %>%
   add_header_above(c(" "=1, "Variation"=6))
+```
+## Environment
+```{r}
+sessionInfo()
 ```

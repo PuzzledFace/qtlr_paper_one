@@ -1,0 +1,221 @@
+---
+title: "Simulation"
+author: "John Kirkpatrick"
+date: "Last run on `r Sys.Date()` by `r Sys.info()[['user']]` on `r Sys.info()['nodename']`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(qtlr)
+library(cowplot)
+library(ggrepel)
+
+#Initialise
+set.seed(980750)
+#set.seed(252729)
+nCentres <- 15
+centreSize <- 10
+standardRate <- 60
+badRate <- 30
+
+generateData <- function(k, n, r1, r2, offset=0) {
+  set.seed(401010)
+  
+  d <- tibble(
+        Centre=1:k,
+        CentreRate=ifelse(Centre == 1, r1, r2),
+        N=centreSize + round(runif(k, -5, 5))
+      ) %>% 
+      group_by(Centre) %>% 
+      expand(
+        nesting(Centre, CentreRate),
+        PatNo=1:N
+      ) %>% 
+      ungroup() %>% 
+      mutate(
+        Interval=rpois(nrow(.), 20)
+      ) %>% 
+      group_by(Centre) %>% 
+      mutate(
+        BaselineDayStudyTime=offset + cumsum(Interval)
+      ) %>% 
+      ungroup() %>% 
+      mutate(
+        FirstMissedDose=rpois(group_size(.), CentreRate),
+        FirstMissedDoseStudyTime=FirstMissedDose + BaselineDayStudyTime
+      )
+  return(d)
+}
+
+nCentres <- 15
+centreSize <- 10
+standardRate <- 60
+badRate <- 25
+```
+
+## Before intervention
+
+```{r, error=TRUE}
+d <- generateData(k=nCentres, n=20, badRate, standardRate)
+
+d1 <- d %>% 
+        filter(BaselineDayStudyTime <= 180) %>% 
+        mutate(
+          Censored=FirstMissedDoseStudyTime > 180,
+          EventTime=ifelse(Censored, 180 - BaselineDayStudyTime, FirstMissedDose)
+        )
+
+summary1 <- d1 %>% 
+               group_by(Centre) %>% 
+               summarise(
+                 N=n(),
+                 Censored=sum(Censored),
+                 TotalExposure=sum(EventTime),
+                 MeanExposure=TotalExposure/(N-Censored),
+                 .groups="drop"
+               )
+
+summary1 %>% 
+  kable(
+    table.attr="style='width:30%;'",
+    col.names=c("Centre", "Patients", "Censored", "Total", "Mean"),
+    digits=c(0, 0, 0, 0, 1)
+  ) %>% 
+  add_header_above(c(" "=3, "Exposure (days)"=2)) %>% 
+  kable_styling(
+    full_width=FALSE,
+    bootstrap_options=c("striped", "condensed")
+  )
+
+qtlColours <- c("darkgrey", "white", "darkgrey")
+qtlLabels <-c("Low", "", "High")
+qtlScale <- scale_fill_manual(name="QTL", labels=qtlLabels, values=qtlColours)
+
+model1 <- fitTteModel(d1$EventTime, d1$Censored, TRUE, d1$Centre)
+
+plot1 <- createQtlPlot(
+           model1 %>% filter(Index == 16), 
+           groupData=summary1, 
+           groupResponse=MeanExposure, 
+           xAxisRange=c(0, 300), 
+           qtls=c(0.1, 0.9)
+         ) +
+         scale_fill_manual(
+           name="QTL",
+           labels=c("Action low", "", "Action high"),
+           values=c("grey", "white", "grey")
+         ) +
+         geom_label_repel(
+           data=summary1,
+           aes(x=MeanExposure, y=N, label=LETTERS[1:nCentres]), 
+           size=3
+         ) +
+         labs(
+           x="Mean exposure (days)",
+           title="Before intervention"
+         )
+
+print(plot1)
+
+model1 %>% filter(Index == 16) %>% summarise(Prob=mean(Value >= 56))
+```
+
+## After intervention
+
+```{r, error=TRUE}
+d2 <- generateData(k=nCentres, n=20, standardRate, standardRate, offset=180) %>% 
+        filter(BaselineDayStudyTime <= 360) %>% 
+        mutate(
+          Censored=FirstMissedDoseStudyTime > 360,
+          EventTime=ifelse(Censored, 360 - BaselineDayStudyTime, FirstMissedDose)
+        )
+
+wholeStudy <- d1 %>% bind_rows(d2)
+
+summary2 <- wholeStudy %>% 
+               group_by(Centre) %>% 
+               summarise(
+                 N=n(),
+                 Censored=sum(Censored),
+                 TotalExposure=sum(EventTime),
+                 MeanExposure=TotalExposure/(N-Censored),
+                 .groups="drop"
+               )
+
+summary2 %>% 
+  kable(
+    table.attr="style='width:30%;'",
+    col.names=c("Centre", "Patients", "Censored", "Total", "Mean"),
+    digits=c(0, 0, 0, 0, 1)
+  ) %>% 
+  add_header_above(c(" "=3, "Exposure (days)"=2)) %>% 
+  kable_styling(
+    full_width=FALSE,
+    bootstrap_options=c("striped", "condensed")
+  )
+
+model2 <- fitTteModel(wholeStudy$EventTime, wholeStudy$Censored, TRUE, wholeStudy$Centre)
+
+plot2 <- createQtlPlot(
+           model2 %>% filter(Index == 16), 
+           groupData=summary2, 
+           groupResponse=MeanExposure, 
+           xAxisRange=c(0, 300), 
+           qtls=c(0.1, 0.9)
+         ) +
+         scale_fill_manual(
+           name="QTL",
+           labels=c("Action low", "", "Action high"),
+           values=c("grey", "white", "grey")
+         ) +
+         geom_label_repel(
+           data=summary2,
+           aes(x=MeanExposure, y=N, label=LETTERS[1:nCentres]), 
+           size=3
+         ) +
+         labs(
+           x="Mean exposure (days)",
+           title="After intervention"
+         )
+
+print(plot2)
+
+model2 %>% filter(Index == 16) %>% summarise(Prob=mean(Value >= 56))
+```
+
+## Combined
+```{r}
+title <- ggdraw() +
+           draw_label("Figure 3: QTLs for a fictitious study, before and after intervention", x=0.0, hjust=0)
+plot3 <- ggdraw() +
+           draw_plot(plot1, x=0.0, y=0.0, width=0.5, height=1) +
+           draw_plot(plot2, x=0.5, y=0.0, width=0.5, height=1)
+combinedPlot <- plot_grid(
+                  title, plot3,
+                  ncol = 1,
+                  rel_heights = c(0.1, 1)
+                )
+print(combinedPlot)
+
+#Save to file
+tiff(filename="Figure3.tiff", width=7200, height=2400, res=800)
+print(combinedPlot)
+dev.off()
+png(filename="Figure3.png", width=2160, height=720, res=240)
+print(combinedPlot)
+dev.off()
+```
+
+## Environment
+```{r}
+sessionInfo()
+```
+
+## Environment
+```{r}
+sessionInfo()
+```
